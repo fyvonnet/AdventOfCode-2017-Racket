@@ -21,51 +21,55 @@
       ([sym (string->list (knot-hash (format "~a-~a" input i)))])
       (append lst (hash-ref hex-hash sym)))))
 
-(define (valid? i)
-  (and (>= i 0) (< i grid-side)))
-
-(define (explore-region! grid start-x start-y)
-  (let loop ([stack (list (cons start-x start-y))])
-    (unless (null? stack)
-      (match (car stack)
-        [(cons x y)
-         (if (zero? (array-ref grid (vector x y)))
-           (loop (cdr stack))
-           (begin
-             (array-set! grid (vector x y) 0)
-             (loop
-               (for/fold
-                 ([new-stack (cdr stack)])
-                 ([x-shift '(1  0 -1  0)]
-                  [y-shift '(0  1  0 -1)])
-                 (let ([neighb-x (+ x x-shift)] [neighb-y (+ y y-shift)] )
-                   (if
-                     (and
-                       (valid? neighb-x)
-                       (valid? neighb-y)
-                       (= 1 (array-ref grid (vector neighb-x neighb-y))))
-                     (cons (cons neighb-x neighb-y) new-stack)
-                     new-stack))))))]))))
+(define (explore-region grid start-x start-y)
+  (let loop ([st grid] [stack (list (cons start-x start-y))])
+    (if (null? stack)
+      st
+      (let ([coord (car stack)])
+        (if (set-member? st coord)
+          (loop
+            (set-remove st coord)
+            (for/fold
+              ([new-stack (cdr stack)])
+              ([x-shift '(1  0 -1  0)]
+               [y-shift '(0  1  0 -1)])
+              (let
+                ([neighb-coord
+                   (cons
+                     (+ (car coord)  x-shift)
+                     (+ (cdr coord)  y-shift))])
+                (if (set-member? st neighb-coord)
+                  (cons neighb-coord new-stack)
+                  new-stack))))
+          (loop st (cdr stack)))))))
 
 (define (count-regions grid)
-  (let loop ([n 0] [count 0])
+  (let loop ([st grid] [n 0] [count 0])
     (if (= n grid-area)
       count
       (let-values ([(x y) (quotient/remainder n grid-side)])
-        (if (= 1 (array-ref grid (vector x y)))
-          (begin
-            (explore-region! grid x y)
-            (loop (add1 n) (add1 count)))
-          (loop (add1 n) count))))))
+        (if (set-member? st (cons x y))
+          (loop (explore-region st x y) (add1 n) (add1 count))
+          (loop st (add1 n) count))))))
 
 (let*
-  ([input "ljoxqyyw"]
+  ([input (call-with-input-file "inputs/day14" read-line)]
    [hex-hash
      (for/hash
        ([sym (string->list "0123456789abcdef")]
-        [i (in-range 16)])
+        [i (in-naturals)])
        (values sym (int->bin i)))]
-   [grid-lst (make-grid input hex-hash)]
-   [grid (list*->array grid-lst number?)])
-  (displayln (for/sum ([line grid-lst]) (for/sum ([i line]) i)))
-  (displayln (count-regions grid)))
+   [grid-set
+     (for/fold
+       ([s (set)])
+       ([y (in-naturals)]
+        [grid-line (make-grid input hex-hash)])
+       (set-union
+         s
+         (for/set
+           ([x (in-naturals)]
+            [grid-square grid-line]
+            #:when (= 1 grid-square))
+           (cons x y))))])
+  (displayln (set-count grid-set))
+  (displayln (count-regions grid-set)))
